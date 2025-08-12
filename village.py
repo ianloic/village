@@ -5,6 +5,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+import tools
+
 
 def get_api_key() -> str | None:
     key = os.environ.get("GEMINI_API_KEY")
@@ -27,138 +29,8 @@ if not api_key:
 # Configure the client
 client = genai.Client(api_key=api_key)
 
-
-def run_command(command: list[str]) -> str:
-    print(f"RUN: {' '.join(command)}")
-
-    # fewer stats
-    env = dict(os.environ)
-    del env["FX_BUILD_RBE_STATS"]
-
-    process = subprocess.Popen(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        env=env,
-    )
-    captured_output = []
-    if process.stdout:
-        for line in iter(process.stdout.readline, ""):
-            # Print to the console in real-time
-            sys.stdout.write("OUTPUT: " + line)
-            # Store for the final returned string
-            captured_output.append(line)
-
-    # process.wait()
-    # return_code = process.returncode
-    # print(f"--- Command finished with exit code: {return_code} ---")
-
-    return "".join(captured_output)
-
-
-def fx_build(target: str) -> str:
-    """Build the Fuchsia source tree.
-
-    Args:
-        target: GN target to build. If it's omitted the whole tree will be built.
-
-    Returns:
-        The build output.
-    """
-
-    command = ["fx", "build", "-q"]
-    if target:
-        command.append(target)
-    return run_command(command)
-
-
-def add_target_to_build(target: str):
-    """Adds a GN target / label to the Fuchsia build.
-
-    Args:
-        target: GN target to include.
-
-    """
-    print(f"ADD TARGET: {target}")
-    with open("out/default/args.gn", "a") as f:
-        f.write("\n# added by agent\n")
-        f.write(f'developer_test_labels += ["{target}"]\n')
-
-
-def read_file(path: str) -> str:
-    """Read the contents of a file in the Fuchsia source tree.
-
-
-    Args:
-        path: the path to the file, relative to the root of the Fuchsia tree.
-
-
-    Returns:
-        the contents of the file if it exists.
-    """
-    print(f"READ FILE: {path}")
-    return open(path, "r").read()
-
-
-def write_file(path: str, contents: str) -> None:
-    """Overwrite the contents of a file in the Fuchsia source tree.
-
-
-    Args:
-        path: the path to the file, relative to the root of the Fuchsia tree.
-        contents: the contents to write to the file.
-
-    """
-    print(f"WRITE FILE: {path} ({len(contents)} bytes)")
-
-    assert ".." not in path
-
-    diff = False
-    if os.path.exists(path):
-        os.rename(path, path + ".orig")
-        diff = True
-
-    with open(path, "wt") as f:
-        f.write(contents)
-
-    if diff:
-        subprocess.call(["diff", "-u", path + ".orig", path])
-
-
-def list_directory(path: str) -> list[str]:
-    """List the contents of a directory in the Fuchsia source tree.
-
-
-    Args:
-        path: the path to the directory, relative to the root of the Fuchsia tree.
-
-    Returns:
-        a list of files and subdirectories. The subdirectories will end in a forward-slash (/).
-    """
-    print(f"LIST DIRECTORY: {path}")
-    contents = []
-    for entry in os.listdir(path):
-        if os.path.isdir(os.path.join(path, entry)):
-            contents.append(entry + "/")
-        else:
-            contents.append(entry)
-    return contents
-
-
 # Configure generation settings
-config = types.GenerateContentConfig(
-    tools=[
-        # types.Tool(google_search=types.GoogleSearch()),
-        # types.Tool(code_execution=types.ToolCodeExecution()),
-        fx_build,
-        add_target_to_build,
-        read_file,
-        write_file,
-        list_directory,
-    ]
-)
+config = types.GenerateContentConfig(tools=tools.TOOLS)
 
 PROMPT_PREAMBLE = """
 You are an experienced operating system engineer working on the Fuchsia
@@ -209,25 +81,3 @@ while True:
 
     print("all done")
     break
-
-    # if response.text is None:
-    #     from pprint import pprint
-
-    #     pprint(response)
-    #     from pdb import set_trace
-
-    #     set_trace()
-
-
-# pprint(response, depth=30)
-
-
-# for i, part in enumerate(response.candidates[0].content.parts):
-#     print(f"Part {i}:")
-#     pprint(part)
-#     if part.text is not None:
-#         print(part.text)
-#     if part.executable_code is not None:
-#         print(part.executable_code.code)
-#     if part.code_execution_result is not None:
-#         print(part.code_execution_result.output)
