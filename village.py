@@ -408,8 +408,8 @@ config = types.GenerateContentConfig(
 )
 
 
-COMPONENT_DIR = "src/developer/build_info"
-COMPONENT_TARGET = "//src/developer/build_info:build-info"
+COMPONENT_DIR = "src/developer/process_explorer/"
+COMPONENT_TARGET = "//src/developer/process_explorer"
 
 TASK_PROMPT = f"""
 Migrate the component in the directory "{COMPONENT_DIR}" from the HLCPP FIDL
@@ -435,6 +435,10 @@ Never try to add realm builder support. The label
 
 Before referencing new targets or labels in BUILD.gn files you MUST ALWAYS
 {CHECK_GN_LABEL_TOOL} tool to validate that the label exists.
+
+After migration from HLCPP to natural bindings is complete, remove lines
+referencing {COMPONENT_TARGET} from "build/cpp/hlcpp_visibility.gni". Do not
+modify any other lines.
 
 """
 
