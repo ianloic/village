@@ -407,9 +407,10 @@ config = types.GenerateContentConfig(
     tools=tools.TOOLS, system_instruction=GEMINI_CLI_PROMPT
 )
 
+COMPONENT_DIR = "src/devices/securemem/drivers/aml-securemem"
+COMPONENT_TARGET = f"//{COMPONENT_DIR}"
+assert tools.check_gn_label(COMPONENT_TARGET)
 
-COMPONENT_DIR = "src/developer/process_explorer/"
-COMPONENT_TARGET = "//src/developer/process_explorer"
 
 TASK_PROMPT = f"""
 Migrate the component in the directory "{COMPONENT_DIR}" from the HLCPP FIDL
@@ -421,7 +422,8 @@ are in: docs/development/languages/fidl/guides/c-family-comparison.md
 Documentation specifically about the new C++ bindings are in:
 docs/reference/fidl/bindings/cpp-bindings.md
 
-Do not use the wire bindings, only use the natural bindings.
+If the component already uses the wire or natural bindings in some places leave
+that code alone and only modify the parts of the component that use HLCPP.
 
 You can build the component by building the target "{COMPONENT_TARGET}".
 
