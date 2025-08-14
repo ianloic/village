@@ -78,6 +78,13 @@ def fx_build(target: str) -> str:
 
 
 @tool
+def fx_test(test_name: str) -> str:
+    """Run a test. This isn't implemented yet."""
+
+    return ""
+
+
+@tool
 def add_target_to_build(target: str):
     """Adds a GN target / label to the Fuchsia build.
 
