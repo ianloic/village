@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# Get the directory where the script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+
+# Path to the virtual environment
+VENV_DIR="$SCRIPT_DIR/.venv"
+
+# Path to the Python interpreter within the virtual environment
+PYTHON_INTERPRETER="$VENV_DIR/bin/python"
+
+# Check if the virtual environment exists
+if [ ! -d "$VENV_DIR" ]; then
+    echo "Error: Virtual environment not found at $VENV_DIR"
+    echo "Please ensure you have created the virtual environment using 'uv venv' or similar."
+    exit 1
+fi
+
+# Check if the Python interpreter exists within the virtual environment
+if [ ! -f "$PYTHON_INTERPRETER" ]; then
+    echo "Error: Python interpreter not found at $PYTHON_INTERPRETER"
+    echo "Please ensure 'uv' has correctly installed the Python interpreter in the virtual environment."
+    exit 1
+fi
+
+# Run the Python script using the specified interpreter, passing along all arguments
+"$PYTHON_INTERPRETER" "$SCRIPT_DIR/village.py" "$@"
