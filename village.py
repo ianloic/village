@@ -1,14 +1,19 @@
 from google import genai
 from google.genai import types
+from google.genai.errors import ClientError
 import os
+import sys
+import json
 from pathlib import Path
-import subprocess
+import asyncio
+import argparse
 
 import system_prompt
 import tools
+import tasks
+import ui
 
-MODEL = "gemini-2.5-flash"
-# MODEL = "gemini-2.5-pro"
+MODELS = ("gemini-2.5-pro", "gemini-2.5-flash")
 
 
 def get_api_key() -> str | None:
@@ -29,59 +34,96 @@ api_key = get_api_key()
 if not api_key:
     raise ValueError("GEMINI_API_KEY environment variable not set.")
 
-# Configure the client
 client = genai.Client(api_key=api_key)
 
 
-# Configure generation settings
-config = types.GenerateContentConfig(
-    tools=tools.TOOLS, system_instruction=system_prompt.SYSTEM_PROMPT
-)
-
-COMPONENT_DIR = "src/devices/securemem/drivers/aml-securemem"
-COMPONENT_TARGET = f"//{COMPONENT_DIR}"
-assert tools.check_gn_label(COMPONENT_TARGET)
-
-
-TASK_PROMPT = f"""
-Migrate the component in the directory "{COMPONENT_DIR}" from the HLCPP FIDL
-bindings to the new Natural C++ bindings.
-
-Documentation covering the differences between the HLCPP and new C++ bindings
-are in: docs/development/languages/fidl/guides/c-family-comparison.md
-
-Documentation specifically about the new C++ bindings are in:
-docs/reference/fidl/bindings/cpp-bindings.md
-
-If the component already uses the wire or natural bindings in some places leave
-that code alone and only modify the parts of the component that use HLCPP.
-
-You can build the component by building the target "{COMPONENT_TARGET}".
-
-Once you have modified the files you must build the component and fix any
-compile errors that have been introduced.
-
-Keep iterating on your changes until the component builds without any errors.
-
-Never try to add realm builder support. The label
-`//sdk/lib/component/testing/cpp` does not exist.
-
-Before referencing new targets or labels in BUILD.gn files you MUST ALWAYS
-{tools.read_file.__name__} tool to validate that the label exists.
-
-After migration from HLCPP to natural bindings is complete, remove lines
-referencing {COMPONENT_TARGET} from "build/cpp/hlcpp_visibility.gni". Do not
-modify any other lines.
-
-"""
+def remove_thought(o):
+    if isinstance(o, dict):
+        return {
+            k: remove_thought(v) for (k, v) in o.items() if k != "thought_signature"
+        }
+    if isinstance(o, list):
+        return [remove_thought(v) for v in o]
+    return o
 
 
-chat = client.chats.create(model=MODEL, config=config)
-prompt = TASK_PROMPT
-while True:
-    response = chat.send_message(prompt)
-    if response.text is None:
-        prompt = ""
+class TaskRunner:
+    def __init__(self, task: tasks._BaseTask, model: str):
+        self.task = task
+        self.model = model
+        config = types.GenerateContentConfig(
+            tools=task.tools,
+            system_instruction=system_prompt.SYSTEM_PROMPT,
+            # temperature=0,
+        )
+
+        config.automatic_function_calling = types.AutomaticFunctionCallingConfig(
+            maximum_remote_calls=1  # 0  # 000
+        )
+        self.chat = client.aio.chats.create(model=model, config=config)
+        tools.on_failure = lambda msg: self.task_failure(msg)
+        tools.on_success = lambda msg: self.task_success(msg)
+        self.completed = False
+        self.successful = None
+
+    async def send_message(self, prompt: str | None = None):
+        while not self.completed:
+            try:
+                response = await self.chat.send_message(prompt or "")
+                return response.text
+            except ClientError as err:
+                # TODO: implement better back-off
+                print("Got {err}, sleeping 30s and retrying...")
+                await asyncio.sleep(30)
+
+    async def run(self):
+        await self.send_message(self.task.prompt)
+        while not self.completed:
+            self.save_history()
+            await self.send_message()
+
+    def get_history(self):
+        return [remove_thought(h.model_dump()) for h in self.chat.get_history()]
+
+    def save_history(self):
+        with open("village_history.json", "wt") as h:
+            json.dump(self.get_history(), h, indent=2)
+
+    def task_success(self, message: str):
+        print(f"TASK SUCCESS: {message}")
+        self.save_history()
+        self.completed = True
+        self.successful = True
+
+    def task_failure(self, message):
+        print(f"TASK FAILURE: {message}")
+        self.save_history()
+        self.completed = True
+        self.successful = False
+
+
+async def main(task: tasks._BaseTask, model: str):
+    task_runner = TaskRunner(task, model)
+    webui = ui.UI(lambda: task_runner.get_history())
+
+    await webui.start()
+
+    await task_runner.run()
+    await webui.stop()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Village agent.")
+    parser.add_argument("--model", type=str, default=MODELS[0], choices=MODELS)
+    tasks.add_task_parsers(parser)
+    args = parser.parse_args()
+    print(repr(args))
+
+    if args.task:
+        task = tasks.get_task(args.task, args)
+        if task is None:
+            print(f"Unknown task: {args.task}")
+            sys.exit(1)
+        asyncio.run(main(task, args.model))
     else:
-        print(f"RESPONSE: {response.text}")
-        prompt = input("USER: ")
+        print("hey, you need to specify a task")

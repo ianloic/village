@@ -5,14 +5,32 @@ Tools that we offer to the assistant.
 import os
 import subprocess
 import sys
+import typing
 
 TOOLS = []
+
+on_success: None | typing.Callable[[str], None] = None
+on_failure: None | typing.Callable[[str], None] = None
+
+
+class WrappedTool:
+    """Wraps a function to be used as a tool."""
+
+    def __init__(self, func):
+        self.func = func
+        self.name = func.__name__
+        self.description = func.__doc__
+        self.__name__ = func.__name__
+        self.__doc__ = func.__doc__
+
+    def __call__(self, *args, **kwargs):
+        return self.func(*args, **kwargs)
 
 
 def tool(func):
     """A decorator that adds the decorated function to the global TOOLS list."""
     TOOLS.append(func)
-    return func
+    return WrappedTool(func)
 
 
 def check_path(path: str):
@@ -85,20 +103,6 @@ def fx_test(test_name: str) -> str:
 
 
 @tool
-def add_target_to_build(target: str):
-    """Adds a GN target / label to the Fuchsia build.
-
-    Args:
-        target: GN target to include.
-
-    """
-    print(f"ADD TARGET: {target}")
-    with open("out/default/args.gn", "a") as f:
-        f.write("\n# added by agent\n")
-        f.write(f'developer_test_labels += ["{target}"]\n')
-
-
-@tool
 def check_gn_label(label: str) -> bool:
     """Quickly checks if a GN label is probably valid.
     This is a heuristic check but helpful to avoid mistakes when updating BUILD.gn files.
@@ -110,7 +114,7 @@ def check_gn_label(label: str) -> bool:
         True if the label is probably valid, False otherwise.
     """
 
-    # TODO: try using `ninja -t query <label-without-leading-double-slash>`
+    # TODO: see if calling `gn desc` works better
 
     print(f"CHECK GN LABEL: {label}")
     if not label.startswith("//"):
@@ -122,12 +126,6 @@ def check_gn_label(label: str) -> bool:
     exists = (
         subprocess.check_call(["ninja", "-t", "query", path], cwd="out/default") == 0
     )
-    # if path.endswith("_cpp_natural") or path.endswith("_cpp_wire"):
-    #     return False
-    # if ":" in path:
-    #     # trim target name from label, leaving directory.
-    #     path = path.split(":", 1)[0]
-    # exists = os.path.exists(path) and os.path.isdir(path)
     print(f"CHECK GN LABEL {label}: {exists}")
     return exists
 
@@ -280,3 +278,34 @@ def regex_search_directory(path: str, pattern: str) -> list[str]:
     print(f"REGEX SEARCH DIRECTORY: {path} for {repr(pattern)}")
     check_path(path)
     return git_grep(path, pattern, True)
+
+
+@tool
+def success(message: str):
+    """Report to the user that the task has been completed successfully.
+
+
+    Args:
+        message: a message to present to the user describing the work that has been done.
+    """
+    print(f"SUCCESS: {message}")
+    if on_success is not None:
+        on_success(message)
+    else:
+        sys.exit(0)
+
+
+@tool
+def fail(message: str):
+    """Report to the user that the task has failed.
+
+    Args:
+     message: a message to present to the user describing why the task failed
+     including information that was missing or invalid, things that were too
+     confusing, etc.
+    """
+    print(f"FAIL: {message}")
+    if on_failure is not None:
+        on_failure(message)
+    else:
+        sys.exit(1)
