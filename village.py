@@ -38,6 +38,7 @@ client = genai.Client(api_key=api_key)
 
 
 def remove_thought(o):
+    """Remove binary thought signatures so we can easily turn this into json."""
     if isinstance(o, dict):
         return {
             k: remove_thought(v) for (k, v) in o.items() if k != "thought_signature"

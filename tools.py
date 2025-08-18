@@ -39,7 +39,7 @@ def check_path(path: str):
     assert not path.startswith("/")
 
 
-def run_command_lines(command: list[str]) -> list[str]:
+def run_command_lines(command: list[str]) -> dict:
     print(f"RUN: {' '.join(command)}")
 
     # fewer stats
@@ -62,26 +62,29 @@ def run_command_lines(command: list[str]) -> list[str]:
             # Store for the final returned string
             captured_output.append(line)
 
-    # process.wait()
-    # return_code = process.returncode
-    # print(f"--- Command finished with exit code: {return_code} ---")
+    process.wait()
+    if process.returncode != 0:
+        print(f"RETURNED: {process.returncode}")
 
-    return captured_output
+    return {"success": process.returncode == 0, "output": captured_output}
 
 
-def run_command(command: list[str]) -> str:
-    return "".join(run_command_lines(command))
+def run_command(command: list[str]) -> dict:
+    result = run_command_lines(command)
+    return {"success": result["success"], "output": "".join(result["output"])}
 
 
 @tool
-def fx_build(target: str) -> str:
+def fx_build(target: str) -> dict:
     """Build the Fuchsia source tree.
 
     Args:
-        target: GN target to build. If it's omitted the whole tree will be built.
+        target: GN target to build. If it's omitted the whole tree will be
+        built.
 
     Returns:
-        The build output.
+        A dictionary with a "success" member indicating if the build succeeded
+        and an "output" member holding the output from the build tools.
     """
 
     print(f"BUILD: {target}")
@@ -89,7 +92,7 @@ def fx_build(target: str) -> str:
         "fx",
         "build",
         "-q",
-    ]  # "--", "-k0"]
+    ]
     if target:
         command.append(target)
     return run_command(command)
@@ -123,9 +126,9 @@ def check_gn_label(label: str) -> bool:
     if "(" in path:
         # trim toolchain
         path = path.split("(", 1)[0]
-    exists = (
-        subprocess.check_call(["ninja", "-t", "query", path], cwd="out/default") == 0
-    )
+    exists = run_command_lines(["ninja", "-C", "out/default", "-t", "query", path])[
+        "success"
+    ]
     print(f"CHECK GN LABEL {label}: {exists}")
     return exists
 
@@ -236,12 +239,18 @@ def git_grep(path: str, pattern: str, regex: bool) -> list[str]:
     if not regex:
         command.append("--fixed-strings")
     command.append(pattern)
-    relative_paths = run_command_lines(command)
-    absolute_paths = []
-    for relative_path in relative_paths:
-        absolute_paths.append(os.path.join(path, relative_path.strip()))
-    print(f"GIT GREP RETURNS: {repr(absolute_paths)}")
-    return absolute_paths
+
+    grep = run_command_lines(command)
+    if grep["success"]:
+        relative_paths = grep["output"]
+        absolute_paths = []
+        for relative_path in relative_paths:
+            absolute_paths.append(os.path.join(path, relative_path.strip()))
+        print(f"GIT GREP RETURNS: {repr(absolute_paths)}")
+        return absolute_paths
+    else:
+        print("GIT GREP FAILED")
+        return []
 
 
 @tool
