@@ -39,7 +39,7 @@ def check_path(path: str):
     assert not path.startswith("/")
 
 
-def run_command_lines(command: list[str]) -> dict:
+def run_command_lines(command: list[str], quiet=False) -> dict:
     print(f"RUN: {' '.join(command)}")
 
     # fewer stats
@@ -58,7 +58,8 @@ def run_command_lines(command: list[str]) -> dict:
     if process.stdout:
         for line in iter(process.stdout.readline, ""):
             # Print to the console in real-time
-            sys.stdout.write("OUTPUT: " + line)
+            if not quiet:
+                sys.stdout.write("OUTPUT: " + line)
             # Store for the final returned string
             captured_output.append(line)
 
@@ -69,8 +70,8 @@ def run_command_lines(command: list[str]) -> dict:
     return {"success": process.returncode == 0, "output": captured_output}
 
 
-def run_command(command: list[str]) -> dict:
-    result = run_command_lines(command)
+def run_command(command: list[str], quiet=False) -> dict:
+    result = run_command_lines(command, quiet=quiet)
     return {"success": result["success"], "output": "".join(result["output"])}
 
 
@@ -126,9 +127,9 @@ def check_gn_label(label: str) -> bool:
     if "(" in path:
         # trim toolchain
         path = path.split("(", 1)[0]
-    exists = run_command_lines(["ninja", "-C", "out/default", "-t", "query", path])[
-        "success"
-    ]
+    exists = run_command_lines(
+        ["ninja", "-C", "out/default", "-t", "query", path], quiet=True
+    )["success"]
     print(f"CHECK GN LABEL {label}: {exists}")
     return exists
 
