@@ -60,7 +60,11 @@ const functionArgValue = (function_name, name, value) => {
         case 'write_file.contents':
         case 'read_file.result':
             return fileContents(value);
-        // TODO: read_files
+        case 'read_files.result':
+            return html`<dl>${Object.entries(value).map(
+                ([path, contents]) => html`<dt class="filename">${path}</dt>
+                        <dd>${fileContents(contents)}</dd>`)}
+                </dl>`;
         case 'list_directory.result':
             return html`<ul>${value.map(item => html`<li class="filename">${item}</li>`)}</ul>`
         default:
@@ -80,7 +84,8 @@ const functionCallPart = (function_call) => {
         <div class="part function_call" data-function-name="${function_call.name}">
             <b>Function Call</b>
             <div class="function-name">${function_call.name}</div>
-            <div class="function-args">${Object.entries(function_call.args).map(([name, value]) => functionArg(function_call.name, name, value))}</div>
+            <div class="function-args">${Object.entries(function_call.args).map(
+        ([name, value]) => functionArg(function_call.name, name, value))}</div>
         </div>`
 };
 
@@ -90,7 +95,8 @@ const functionResponsePart = (function_call) => {
         <div class="part function_response" data-function-name="${function_call.name}">
             <b>Function Response</b>
             <div class="function-name">${function_call.name}</div>
-            <div class="function-args">${Object.entries(function_call.response).map(([name, value]) => functionArg(function_call.name, name, value))}</div>
+            <div class="function-args">${Object.entries(function_call.response).map(
+        ([name, value]) => functionArg(function_call.name, name, value))}</div>
         </div>`
 };
 
