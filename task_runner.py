@@ -103,6 +103,7 @@ class TaskRunner:
                 await asyncio.sleep(30)
 
     async def run(self):
+        self.task.preflight()
         self.start_time = time.time()
         await self.send_message(self.task.prompt)
         while not self.completed:
