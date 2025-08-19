@@ -8,32 +8,35 @@ from aiohttp import web
 
 
 class UI:
-    def __init__(self, get_history: typing.Callable[[], list]):
-        self.get_history = get_history
+    def __init__(self, get_state: typing.Callable[[], dict]):
+        self.get_state = get_state
 
         self.app = web.Application()
         self.app.add_routes(
             [
                 web.get("/", self.ui_redirect),
-                web.get("/history", self.history_handler),
+                web.get("/state", self.state_handler),
                 web.static("/ui/", os.path.join(os.path.dirname(__file__), "ui")),
             ]
         )
 
     async def start(self):
+        port = 8080
         self.runner = web.AppRunner(self.app)
-        print("set up web runner")
         await self.runner.setup()
-        self.site = web.TCPSite(self.runner, port=8080)
-        print("start web site")
+        self.site = web.TCPSite(self.runner, port=port)
         await self.site.start()
-        print("web site running")
+        print(f"UI running on http://localhost:{port}/")
 
     async def stop(self):
         await self.runner.cleanup()
 
-    async def history_handler(self, request):
-        return web.json_response(self.get_history())
+    def run_forever(self):
+        web.run_app(self.app, port=8080)
+
+    async def state_handler(self, request):
+        state = self.get_state()
+        return web.json_response(state)
 
     async def ui_redirect(self, request):
-        return web.HTTPFound("/ui/")
+        return web.HTTPFound("/ui/index.html")

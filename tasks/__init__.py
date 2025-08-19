@@ -15,8 +15,8 @@ def add_task_parsers(parser: argparse.ArgumentParser):
     return subparsers
 
 
-def get_task(name: str, args: argparse.Namespace) -> _BaseTask | None:
+def get_task(name: str, args: argparse.Namespace) -> _BaseTask:
     for task in TASKS:
         if task.NAME == name:
             return task(args)
-    return None
+    raise ValueError(f"Unknown task: {name}")

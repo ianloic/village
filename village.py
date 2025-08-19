@@ -1,3 +1,4 @@
+import time
 from google import genai
 from google.genai import types
 from google.genai.errors import ClientError
@@ -49,82 +50,130 @@ def remove_thought(o):
 
 
 class TaskRunner:
-    def __init__(self, task: tasks._BaseTask, model: str):
-        self.task = task
-        self.model = model
+    def __init__(self, args: argparse.Namespace):
+        self.args = args
+        self.task = tasks.get_task(args.task, args)
+        self.model = args.model
         config = types.GenerateContentConfig(
-            tools=task.tools,
+            tools=self.task.tools,
             system_instruction=system_prompt.SYSTEM_PROMPT,
             # temperature=0,
         )
 
         config.automatic_function_calling = types.AutomaticFunctionCallingConfig(
-            maximum_remote_calls=1  # 0  # 000
+            maximum_remote_calls=1
         )
-        self.chat = client.aio.chats.create(model=model, config=config)
+        self.chat = client.aio.chats.create(model=self.model, config=config)
         tools.on_failure = lambda msg: self.task_failure(msg)
         tools.on_success = lambda msg: self.task_success(msg)
         self.completed = False
         self.successful = None
+        self.usage_metadata = None
+        self.start_time = None
+        self.duration = None
 
-    async def send_message(self, prompt: str | None = None):
+    async def send_message(self, prompt: str | None = None) -> None:
         while not self.completed:
             try:
+                print("sending request...")
                 response = await self.chat.send_message(prompt or "")
-                return response.text
+                print("got answer...")
+                if response.usage_metadata:
+                    self.usage_metadata = response.usage_metadata.model_dump()
+
+                if response.candidates is None or len(response.candidates) != 1:
+                    from pdb import set_trace
+
+                    set_trace()
+                else:
+                    candidate = response.candidates[0]
+                    if candidate.content and candidate.content.parts:
+                        for part in candidate.content.parts:
+                            if part.text:
+                                print(
+                                    f"FROM MODEL: {part.text.replace('\n', '\nFROM MODEL: ')}"
+                                )
+                    else:
+                        if candidate.finish_reason == types.FinishReason.RECITATION:
+                            self.task_failure(
+                                f"Model ended up failing with: {candidate}"
+                            )
+                        else:
+                            print("WARNING, MODEL RETURNED: {candidate}")
+                break
             except ClientError as err:
                 # TODO: implement better back-off
                 print("Got {err}, sleeping 30s and retrying...")
                 await asyncio.sleep(30)
 
     async def run(self):
+        self.start_time = time.time()
         await self.send_message(self.task.prompt)
         while not self.completed:
-            self.save_history()
+            self.save_state()
             await self.send_message()
 
     def get_history(self):
         return [remove_thought(h.model_dump()) for h in self.chat.get_history()]
 
-    def save_history(self):
-        with open("village_history.json", "wt") as h:
-            json.dump(self.get_history(), h, indent=2)
+    def save_state(self):
+        if self.args.recording:
+            with open(self.args.recording, "wt") as h:
+                json.dump(self.get_state(), h, indent=2)
+        else:
+            print("not saving state.")
+
+    def get_state(self):
+        return {
+            "history": self.get_history(),
+            "args": self.args.__dict__,
+            "usage": self.usage_metadata,
+            "completed": self.completed,
+            "successful": self.successful,
+            "duration": self.duration or time.time() - (self.start_time or 0),
+        }
 
     def task_success(self, message: str):
         print(f"TASK SUCCESS: {message}")
-        self.save_history()
+        self.duration = time.time() - (self.start_time or 0)
         self.completed = True
         self.successful = True
+        self.save_state()
 
     def task_failure(self, message):
         print(f"TASK FAILURE: {message}")
-        self.save_history()
+        self.duration = time.time() - (self.start_time or 0)
         self.completed = True
         self.successful = False
+        self.save_state()
 
 
-async def main(task: tasks._BaseTask, model: str):
-    task_runner = TaskRunner(task, model)
-    webui = ui.UI(lambda: task_runner.get_history())
-
-    await webui.start()
-
-    await task_runner.run()
-    await webui.stop()
+async def run_task(args: argparse.Namespace):
+    task_runner = TaskRunner(args)
+    if args.ui:
+        webui = ui.UI(lambda: task_runner.get_state())
+        await webui.start()
+        await task_runner.run()
+        await webui.stop()
+    else:
+        await task_runner.run()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Village agent.")
     parser.add_argument("--model", type=str, default=MODELS[0], choices=MODELS)
+    parser.add_argument("--temperature", type=float, default=1)
+    parser.add_argument("--recording", type=str)
+    parser.add_argument("--ui", action="store_true")
     tasks.add_task_parsers(parser)
     args = parser.parse_args()
-    print(repr(args))
 
-    if args.task:
-        task = tasks.get_task(args.task, args)
-        if task is None:
-            print(f"Unknown task: {args.task}")
-            sys.exit(1)
-        asyncio.run(main(task, args.model))
+    if args.task is None and not (args.ui and args.recording):
+        print("Please specify either a task to run or a recording to view.")
+        sys.exit(1)
+
+    if args.task is not None:
+        asyncio.run(run_task(args))
     else:
-        print("hey, you need to specify a task")
+        webui = ui.UI(lambda: json.load(open(args.recording)))
+        webui.run_forever()
