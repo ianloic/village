@@ -51,13 +51,14 @@ def remove_thought(o):
 
 class TaskRunner:
     def __init__(self, args: argparse.Namespace):
-        self.args = args
-        self.task = tasks.get_task(args.task, args)
+        self.output = args.output
+        self.temperature = args.temperature
         self.model = args.model
+        self.task = tasks.get_task(args.task, args)
         config = types.GenerateContentConfig(
             tools=self.task.tools,
             system_instruction=system_prompt.SYSTEM_PROMPT,
-            # temperature=0,
+            temperature=self.temperature,
         )
 
         config.automatic_function_calling = types.AutomaticFunctionCallingConfig(
@@ -115,8 +116,8 @@ class TaskRunner:
         return [remove_thought(h.model_dump()) for h in self.chat.get_history()]
 
     def save_state(self):
-        if self.args.recording:
-            with open(self.args.recording, "wt") as h:
+        if self.output:
+            with open(self.output, "wt") as h:
                 json.dump(self.get_state(), h, indent=2)
         else:
             print("not saving state.")
@@ -124,7 +125,10 @@ class TaskRunner:
     def get_state(self):
         return {
             "history": self.get_history(),
-            "args": self.args.__dict__,
+            "model": self.model,
+            "task": self.task.NAME,
+            "task_prompt": self.task.prompt,
+            "temperature": self.temperature,
             "usage": self.usage_metadata,
             "completed": self.completed,
             "successful": self.successful,
@@ -148,30 +152,56 @@ class TaskRunner:
 
 async def run_task(args: argparse.Namespace):
     task_runner = TaskRunner(args)
+    webui = None
     if args.ui:
         webui = ui.UI(lambda: task_runner.get_state())
         await webui.start()
-        await task_runner.run()
+    await task_runner.run()
+    if webui is not None:
         await webui.stop()
-    else:
-        await task_runner.run()
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Village agent.")
-    parser.add_argument("--model", type=str, default=MODELS[0], choices=MODELS)
-    parser.add_argument("--temperature", type=float, default=1)
-    parser.add_argument("--recording", type=str)
-    parser.add_argument("--ui", action="store_true")
-    tasks.add_task_parsers(parser)
+    parser = argparse.ArgumentParser(description="Village: keeping agents locked down.")
+    subcommands = parser.add_subparsers(
+        dest="subcommand", help="Sub-command to use", metavar="COMMAND"
+    )
+
+    # Run command
+    run_parser = subcommands.add_parser("run", help="Run a task.")
+    run_parser.add_argument(
+        "--model",
+        type=str,
+        default=MODELS[0],
+        choices=MODELS,
+        help="The LLM model to use.",
+    )
+    run_parser.add_argument(
+        "--temperature",
+        type=float,
+        default=1,
+        help="The LLM temperature. Defaults to 1. Range is 0 to 2. "
+        + "Lower values are less random, Higher values are more random.",
+    )
+    run_parser.add_argument(
+        "--output", type=Path, help="Where to put the JSON recording of the sessions."
+    )
+    run_parser.add_argument(
+        "--ui", action="store_true", help="Run the web UI while the task runs"
+    )
+    tasks.add_task_parsers(run_parser)
+
+    # View command
+    view_parser = subcommands.add_parser("view", help="View a task recording.")
+    view_parser.add_argument("recording", type=Path, help="The recording to view.")
+
+    # Parse and dispatch to subcommands
     args = parser.parse_args()
 
-    if args.task is None and not (args.ui and args.recording):
-        print("Please specify either a task to run or a recording to view.")
-        sys.exit(1)
-
-    if args.task is not None:
+    if args.subcommand == "run":
         asyncio.run(run_task(args))
-    else:
-        webui = ui.UI(lambda: json.load(open(args.recording)))
+    elif args.subcommand == "view":
+        webui = ui.UI(lambda: json.load(open(args.output)))
         webui.run_forever()
+    else:
+        raise Exception(f"Unknown subcommand: {args.subcommand}")
