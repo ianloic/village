@@ -13,8 +13,28 @@
             margin: 10px;
         }
 
+        .filename,
+        .function-arg[data-arg-name="path"],
+        .function-arg[data-arg-name="label"] {
+            font-family: monospace;
+        }
+
         .role {
             font-weight: bold;
+        }
+
+        .function-args {
+            display: table;
+        }
+
+        .function-arg {
+            display: table-row;
+        }
+
+        .function-arg-name,
+        .function-arg-value {
+            display: table-cell;
+            padding: 0px 5px;
         }
     </style>
 </head>

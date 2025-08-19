@@ -75,9 +75,7 @@ class TaskRunner:
     async def send_message(self, prompt: str | None = None) -> None:
         while not self.completed:
             try:
-                print("sending request...")
                 response = await self.chat.send_message(prompt or "")
-                print("got answer...")
                 if response.usage_metadata:
                     self.usage_metadata = response.usage_metadata.model_dump()
 
