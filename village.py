@@ -7,6 +7,7 @@ import argparse
 
 import tasks
 import ui
+import summarize
 from task_runner import TaskRunner, MODELS
 
 
@@ -55,6 +56,9 @@ if __name__ == "__main__":
     view_parser = subcommands.add_parser("view", help="View a task recording.")
     view_parser.add_argument("recording", type=Path, help="The recording to view.")
 
+    # Summarize command
+    summarize.add_subcommand(subcommands)
+
     # Parse and dispatch to subcommands
     args = parser.parse_args()
 
@@ -63,5 +67,8 @@ if __name__ == "__main__":
     elif args.subcommand == "view":
         webui = ui.UI(lambda: json.load(open(args.output)))
         webui.run_forever()
+    elif args.subcommand == "summarize":
+        summarize.summarize_command(args)
     else:
-        raise Exception(f"Unknown subcommand: {args.subcommand}")
+        parser.print_help()
+        exit(1)

@@ -7,4 +7,6 @@ requires-python = ">=3.12"
 dependencies = [
     "aiohttp>=3.12.15",
     "google-genai>=1.29.0",
+    "ipython>=9.4.0",
+    "pandas>=2.3.1",
 ]

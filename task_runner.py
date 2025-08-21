@@ -99,7 +99,7 @@ class TaskRunner:
                 break
             except ClientError as err:
                 # TODO: implement better back-off
-                print("Got {err}, sleeping 30s and retrying...")
+                print(f"Got {err}, sleeping 30s and retrying...")
                 await asyncio.sleep(30)
 
     async def run(self):

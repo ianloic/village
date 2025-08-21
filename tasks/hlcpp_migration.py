@@ -68,10 +68,3 @@ referencing {self.component_target} from "build/cpp/hlcpp_visibility.gni". Do
 not modify any other lines.
 
 """
-
-
-# # Configure generation settings
-
-# COMPONENT_DIR = "src/developer/build_info"
-# # COMPONENT_TARGET = f"//{COMPONENT_DIR}"
-# COMPONENT_TARGET = f"//{COMPONENT_DIR}:build-info"
